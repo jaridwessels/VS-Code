@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+# Inventory Class
 class Item:
     def __init__(self, name, category, quantity, price):
         self.name = name
@@ -14,9 +15,9 @@ class Item:
 class Inventory:
     def __init__(self):
         self.items = []
-        self.load_default_items()
+        self.load_items()
 
-    def load_default_items(self):
+    def load_items(self):
         defaults = [
             {"Name": "Apple", "Category": "Fruit", "Quantity": 50, "Price": 0.50},
             {"Name": "Bacon", "Category": "Meat", "Quantity": 25, "Price": 4.50},
@@ -33,176 +34,118 @@ class Inventory:
             {"Name": "Peanut Butter", "Category": "Pantry", "Quantity": 25, "Price": 3.00},
             {"Name": "Rice", "Category": "Pantry", "Quantity": 100, "Price": 1.20},
         ]
-        for item in defaults:
-            self.items.append(Item(item["Name"], item["Category"], item["Quantity"], item["Price"]))
+        for d in defaults:
+            self.items.append(Item(d["Name"], d["Category"], d["Quantity"], d["Price"]))
 
-    def add_item(self, item):
-        for existing in self.items:
-            if existing.name.lower() == item.name.lower():
-                return False
-        self.items.append(item)
-        return True
-
-    def remove_item(self, name):
+    def find_item_by_name(self, name):
         for item in self.items:
             if item.name.lower() == name.lower():
-                self.items.remove(item)
-                return True
-        return False
+                return item
+        return None
 
-    def update_item(self, name, quantity, price):
-        for item in self.items:
-            if item.name.lower() == name.lower():
-                item.quantity = quantity
-                item.price = price
-                return True
-        return False
-
-    def search_by_name(self, name):
-        return [item for item in self.items if item.name.lower() == name.lower()]
-
-    def search_by_category(self, category):
-        return [item for item in self.items if item.category.lower() == category.lower()]
-
-    def get_all(self):
-        return self.items
-
-class InventoryApp:
+# Tkinter App 
+class ShoppingCartApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Grocery Inventory Manager")
+        self.root.title("Shopping Cart")
+
         self.inventory = Inventory()
+        self.cart = []
 
-        self.setup_gui()
-        self.load_items()
+        self.item_name = tk.StringVar()
+        self.quantity = tk.StringVar()
+        self.total_items = tk.StringVar(value="0")
+        self.total_price = tk.StringVar(value="$0.00")
 
-    def setup_gui(self):
-        button_frame = tk.Frame(self.root)
-        button_frame.pack(pady=10)
+        self.setup_layout()
+        self.load_inventory()
 
-        tk.Button(button_frame, text="Add Item", command=self.open_add_window).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Update Item", command=self.open_update_window).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Remove Selected", command=self.remove_selected_item).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Search", command=self.open_search_window).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Refresh", command=self.load_items).pack(side=tk.LEFT, padx=5)
+    def setup_layout(self):
+        mainframe = ttk.Frame(self.root, padding="10")
+        mainframe.grid(row=0, column=0, sticky="nsew")
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
 
-        columns = ("Name", "Category", "Quantity", "Price", "Total")
-        self.tree = ttk.Treeview(self.root, columns=columns, show="headings")
-        for col in columns:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=120)
-        self.tree.pack(fill=tk.BOTH, expand=True)
+        inv_frame = ttk.LabelFrame(mainframe, text="Inventory", padding="5")
+        inv_frame.grid(row=0, column=0, sticky="ns", padx=(0, 10))
 
-    def load_items(self, items=None):
-        for row in self.tree.get_children():
-            self.tree.delete(row)
+        self.inv_tree = ttk.Treeview(inv_frame, columns=("Name", "Qty", "Price"), show="headings", height=20)
+        for col in ("Name", "Qty", "Price"):
+            self.inv_tree.heading(col, text=col)
+            self.inv_tree.column(col, width=100, anchor="center")
+        self.inv_tree.grid(row=0, column=0, sticky="ns")
 
-        item_list = items if items is not None else self.inventory.get_all()
-        for item in item_list:
-            self.tree.insert("", tk.END, values=(
-                item.name,
-                item.category,
-                item.quantity,
-                f"${item.price:.2f}",
-                f"${item.total_value():.2f}"
-            ))
+        form_frame = ttk.Frame(mainframe, padding="5")
+        form_frame.grid(row=0, column=1, sticky="n")
 
-    def get_selected_item(self):
-        selected = self.tree.selection()
-        if not selected:
-            return None
-        return self.tree.item(selected[0])['values']
+        ttk.Label(form_frame, text="Item Name:").grid(row=0, column=0, sticky="e")
+        ttk.Entry(form_frame, textvariable=self.item_name, width=25).grid(row=0, column=1)
 
-    def open_add_window(self):
-        self.popup_form("Add New Item", self.add_item)
+        ttk.Label(form_frame, text="Quantity:").grid(row=1, column=0, sticky="e")
+        ttk.Entry(form_frame, textvariable=self.quantity, width=25).grid(row=1, column=1)
 
-    def open_update_window(self):
-        selected = self.get_selected_item()
-        if not selected:
-            messagebox.showerror("No selection", "Please select an item to update.")
-            return
-        self.popup_form("Update Item", self.update_item, prefill=selected)
+        ttk.Button(form_frame, text="Add to Cart", command=self.add_to_cart).grid(row=2, column=1, sticky="e", pady=5)
+        ttk.Button(form_frame, text="Clear Cart", command=self.clear_cart).grid(row=3, column=1, sticky="e")
 
-    def open_search_window(self):
-        win = tk.Toplevel(self.root)
-        win.title("Search Items")
+        # Display
+        cart_frame = ttk.LabelFrame(mainframe, text="Shopping Cart", padding="5")
+        cart_frame.grid(row=0, column=2, sticky="n")
 
-        tk.Label(win, text="Search by Name or Category:").pack(pady=5)
-        entry = tk.Entry(win)
-        entry.pack(pady=5)
+        self.cart_list = tk.Listbox(cart_frame, height=20, width=50)
+        self.cart_list.pack()
 
-        def search():
-            term = entry.get().strip()
-            if not term:
+        ttk.Label(cart_frame, text="Total Items: ").pack(anchor="w")
+        ttk.Label(cart_frame, textvariable=self.total_items).pack(anchor="w")
+        ttk.Label(cart_frame, text="Total Price: ").pack(anchor="w")
+        ttk.Label(cart_frame, textvariable=self.total_price).pack(anchor="w")
+
+        # Menu
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Menu", menu=file_menu)
+        file_menu.add_command(label="New Order", command=self.clear_cart)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.root.quit)
+
+    def load_inventory(self):
+        self.inv_tree.delete(*self.inv_tree.get_children())
+        for item in self.inventory.items:
+            self.inv_tree.insert("", tk.END, values=(item.name, item.quantity, f"${item.price:.2f}"))
+
+    def add_to_cart(self):
+        try:
+            name = self.item_name.get().strip()
+            qty = int(self.quantity.get())
+            item = self.inventory.find_item_by_name(name)
+
+            if not item:
+                messagebox.showerror("Error", f"Item '{name}' not found in inventory.")
                 return
-            by_name = self.inventory.search_by_name(term)
-            by_category = self.inventory.search_by_category(term)
-            results = by_name + [i for i in by_category if i not in by_name]
-            self.load_items(results)
-            win.destroy()
 
-        tk.Button(win, text="Search", command=search).pack(pady=5)
+            if qty <= 0:
+                raise ValueError
 
-    def popup_form(self, title, on_submit, prefill=None):
-        win = tk.Toplevel(self.root)
-        win.title(title)
+            total = qty * item.price
+            self.cart.append((item.name, qty, item.price, total))
+            self.update_cart_display()
+        except ValueError:
+            messagebox.showerror("Error", "Invalid quantity.")
 
-        tk.Label(win, text="Name").grid(row=0, column=0)
-        tk.Label(win, text="Category").grid(row=1, column=0)
-        tk.Label(win, text="Quantity").grid(row=2, column=0)
-        tk.Label(win, text="Price").grid(row=3, column=0)
+    def clear_cart(self):
+        self.cart.clear()
+        self.update_cart_display()
 
-        name_var = tk.StringVar(value=prefill[0] if prefill else "")
-        cat_var = tk.StringVar(value=prefill[1] if prefill else "")
-        qty_var = tk.StringVar(value=prefill[2] if prefill else "")
-        price_var = tk.StringVar(value=prefill[3].replace("$", "") if prefill else "")
-
-        tk.Entry(win, textvariable=name_var).grid(row=0, column=1)
-        tk.Entry(win, textvariable=cat_var).grid(row=1, column=1)
-        tk.Entry(win, textvariable=qty_var).grid(row=2, column=1)
-        tk.Entry(win, textvariable=price_var).grid(row=3, column=1)
-
-        def submit():
-            try:
-                name = name_var.get().strip()
-                cat = cat_var.get().strip()
-                qty = int(qty_var.get())
-                price = float(price_var.get())
-                if not name or not cat:
-                    raise ValueError("Empty fields")
-                on_submit(name, cat, qty, price)
-                win.destroy()
-            except ValueError:
-                messagebox.showerror("Invalid input", "Please enter valid data.")
-
-        tk.Button(win, text="Submit", command=submit).grid(row=4, columnspan=2, pady=10)
-
-    def add_item(self, name, category, quantity, price):
-        item = Item(name, category, quantity, price)
-        if self.inventory.add_item(item):
-            self.load_items()
-        else:
-            messagebox.showwarning("Exists", "Item already exists.")
-
-    def update_item(self, name, category, quantity, price):
-        if self.inventory.update_item(name, quantity, price):
-            self.load_items()
-        else:
-            messagebox.showerror("Not Found", "Item not found.")
-
-    def remove_selected_item(self):
-        selected = self.get_selected_item()
-        if not selected:
-            messagebox.showerror("No selection", "Select an item to remove.")
-            return
-        name = selected[0]
-        if self.inventory.remove_item(name):
-            self.load_items()
-        else:
-            messagebox.showerror("Error", "Failed to remove item.")
+    def update_cart_display(self):
+        self.cart_list.delete(0, tk.END)
+        for name, qty, price, total in self.cart:
+            self.cart_list.insert(tk.END, f"{name} - Qty: {qty} @ ${price:.2f} = ${total:.2f}")
+        self.total_items.set(str(sum(qty for _, qty, _, _ in self.cart)))
+        total_price = sum(total for _, _, _, total in self.cart)
+        self.total_price.set(f"${total_price:.2f}")
 
 if __name__ == "__main__":
     root = tk.Tk()
-    root.geometry("700x500")
-    app = InventoryApp(root)
+    root.geometry("900x500")
+    app = ShoppingCartApp(root)
     root.mainloop()
